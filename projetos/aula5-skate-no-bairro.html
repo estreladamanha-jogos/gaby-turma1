@@ -626,11 +626,21 @@ function drawBird(b) {
     ctx.textAlign = 'left';
     ctx.restore();
   } else {
-    // pássaro já caiu na pista
+    // pássaro cai do céu bem em cima da cabeça do skatista
+    const FALL_DURATION = 0.25; // segundos despencando até a cabeça
+    const HEAD_OFFSET = 150;    // altura da cabeça, igual à do drawPlayer
+    const fallT = Math.min(1, (time - landTime) / FALL_DURATION);
+    const skyY = y - 260*s;           // ponto bem alto, de onde ele despenca
+    const headY = y - HEAD_OFFSET*s;  // altura da cabeça
+    const birdY = skyY + (headY - skyY) * fallT;
+
     ctx.save();
-    ctx.translate(x, y - 10*s);
-    ctx.fillStyle = 'rgba(0,0,0,.3)';
-    ctx.beginPath(); ctx.ellipse(0, 14*s, 30*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.translate(x, birdY);
+    if (fallT >= 1) {
+      // sombra no chão, só depois que ele já bateu na cabeça
+      ctx.fillStyle = 'rgba(0,0,0,.25)';
+      ctx.beginPath(); ctx.ellipse(0, (y - 10*s) - birdY, 16*s, 5*s, 0, 0, Math.PI*2); ctx.fill();
+    }
     ctx.fillStyle = '#3a3a3a';
     ctx.beginPath(); ctx.ellipse(0, 0, 20*s, 14*s, 0, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#222';
