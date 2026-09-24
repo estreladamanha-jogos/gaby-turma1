@@ -28,6 +28,9 @@
   #progress { flex:1; max-width:320px; height:16px; background:rgba(0,0,0,.45); border:2px solid #fff; border-radius:999px; position:relative; }
   #progressFill { height:100%; width:0%; background:linear-gradient(90deg,#00e5a0,#ffe033); border-radius:999px; }
   #progressIcon { position:absolute; top:-7px; left:0%; font-size:18px; transform:translateX(-50%); }
+  #dogMeter { width:80px; height:16px; background:rgba(0,0,0,.45); border:2px solid #fff; border-radius:999px; position:relative; }
+  #dogMeterFill { height:100%; width:0%; background:linear-gradient(90deg,#8a5a2b,#ff2d2d); border-radius:999px; }
+  #dogMeterIcon { position:absolute; top:-7px; left:0%; font-size:18px; transform:translateX(-50%); }
   canvas { display:block; width:100%; height:auto; background:#66c5ff; border:6px solid var(--ink); border-radius:8px; box-shadow:0 0 0 3px #fff, 0 14px 0 rgba(0,0,0,.35); }
   #hint {
     position:absolute; bottom:10px; left:0; right:0; text-align:center; color:#fff; font-size:13px; font-weight:bold;
@@ -54,6 +57,7 @@
   <div id="hud">
     <div class="stat" id="livesDisplay">❤️❤️❤️</div>
     <div class="stat">🪙 <b id="coinVal">0</b></div>
+    <div id="dogMeter"><div id="dogMeterFill"></div><div id="dogMeterIcon">🐶</div></div>
     <div id="progress"><div id="progressFill"></div><div id="progressIcon">🛹</div></div>
     <div class="stat">🏁 <b id="pctVal">0</b>%</div>
   </div>
@@ -110,6 +114,16 @@ let invincibleTimer = 0;
 function updateLivesDisplay() {
   document.getElementById('livesDisplay').textContent =
     '❤️'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, MAX_LIVES - lives));
+}
+
+// ---------- Cachorro perseguidor ----------
+const DOG_APPROACH_PER_HIT = 60; // a cada batida, ele chega 60% mais perto
+const DOG_RECOVER_PER_SEC = 5;   // e com o tempo se afasta 5% por segundo
+let dogCloseness = 0; // 0% = bem longe, 100% = te pegou
+
+function updateDogMeter() {
+  document.getElementById('dogMeterFill').style.width = dogCloseness + '%';
+  document.getElementById('dogMeterIcon').style.left = dogCloseness + '%';
 }
 
 // ---------- Perspectiva ----------
@@ -221,6 +235,10 @@ function update(dt) {
     if (invincibleTimer <= 0) { invincible = false; invincibleTimer = 0; }
   }
 
+  // o cachorro vai se afastando com o tempo
+  dogCloseness = Math.max(0, dogCloseness - DOG_RECOVER_PER_SEC * dt);
+  updateDogMeter();
+
   for (const c of coins) {
     if (c.taken) continue;
     const d = c.d - distance;
@@ -300,6 +318,14 @@ function winGame() {
 }
 
 function hitObstacle() {
+  // a cada batida, o cachorro chega mais perto
+  dogCloseness = Math.min(100, dogCloseness + DOG_APPROACH_PER_HIT);
+  updateDogMeter();
+  if (dogCloseness >= 100) {
+    catchByDog(); // duas batidas seguidas: o cachorro te pega, mesmo com vidas sobrando
+    return;
+  }
+
   lives--;
   updateLivesDisplay();
   if (lives <= 0) {
@@ -314,6 +340,13 @@ function loseGame() {
   gameOver = true;
   document.getElementById('overlayTitle').textContent = '💥 GAME OVER';
   document.getElementById('overlayText').textContent = `Você perdeu todas as vidas depois de coletar ${coinCount} moedas. Tenta de novo!`;
+  document.getElementById('overlay').classList.add('show');
+}
+
+function catchByDog() {
+  gameOver = true;
+  document.getElementById('overlayTitle').textContent = '🐶 GAME OVER';
+  document.getElementById('overlayText').textContent = `Duas batidas seguidas e o cachorro te alcançou! Você tinha ${coinCount} moedas.`;
   document.getElementById('overlay').classList.add('show');
 }
 
@@ -333,6 +366,8 @@ function restart() {
   obstacleTimer = OBSTACLE_SPAWN_INTERVAL;
   birds = [];
   birdTimer = BIRD_SPAWN_MIN + Math.random() * (BIRD_SPAWN_MAX - BIRD_SPAWN_MIN);
+  dogCloseness = 0;
+  updateDogMeter();
   document.getElementById('coinVal').textContent = 0;
   document.getElementById('overlay').classList.remove('show');
 }
