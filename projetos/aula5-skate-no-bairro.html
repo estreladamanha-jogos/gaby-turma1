@@ -171,6 +171,21 @@ function spawnObstacle() {
   obstacles.push({ d: spawnD, lane, type, color, resolved: false });
 }
 
+// ---------- Pássaro (cai do céu com aviso) ----------
+const BIRD_SPAWN_MIN = 4, BIRD_SPAWN_MAX = 7; // segundos entre um pássaro e outro
+const BIRD_WARNING_DURATION = 1;   // 1s de aviso (sombra vermelha) antes dele cair
+const BIRD_HIT_WINDOW = 1.4;       // janela de colisão depois que ele já caiu na pista
+
+let birds = [];
+let birdTimer = BIRD_SPAWN_MIN + Math.random() * (BIRD_SPAWN_MAX - BIRD_SPAWN_MIN);
+
+function spawnBird() {
+  const lane = Math.floor(Math.random() * 3);
+  // cai exatamente onde o skatista vai estar quando o aviso acabar
+  const d = distance + speed * BIRD_WARNING_DURATION;
+  birds.push({ d, lane, spawnTime: time, resolved: false });
+}
+
 // ---------- Controle ----------
 const keys = {};
 window.addEventListener('keydown', e => {
@@ -245,6 +260,31 @@ function update(dt) {
   // limpa obstáculos que já ficaram bem para trás
   obstacles = obstacles.filter(o => o.d - distance > -10);
 
+  // nasce um pássaro de vez em quando, sempre avisando antes de cair
+  birdTimer -= dt;
+  if (birdTimer <= 0) {
+    spawnBird();
+    birdTimer = BIRD_SPAWN_MIN + Math.random() * (BIRD_SPAWN_MAX - BIRD_SPAWN_MIN);
+  }
+
+  // colisão com o pássaro (só depois que ele já caiu na pista)
+  for (const b of birds) {
+    if (b.resolved) continue;
+    const dd = b.d - distance;
+    if (dd < -BIRD_HIT_WINDOW) { b.resolved = true; continue; }
+    const landed = time >= b.spawnTime + BIRD_WARNING_DURATION;
+    if (landed && dd < BIRD_HIT_WINDOW && Math.abs(player.lane - b.lane) < 0.6) {
+      if (invincible) { b.resolved = true; continue; }
+      if (player.jumpY < JUMP_CLEAR_HEIGHT) {
+        b.resolved = true;
+        hitObstacle();
+        if (gameOver) return;
+      }
+    }
+  }
+  // limpa pássaros que já ficaram bem para trás
+  birds = birds.filter(b => b.d - distance > -10);
+
   const pct = Math.min(100, distance / TRACK_LENGTH * 100);
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('progressIcon').style.left = pct + '%';
@@ -291,6 +331,8 @@ function restart() {
   buildCoins();
   obstacles = [];
   obstacleTimer = OBSTACLE_SPAWN_INTERVAL;
+  birds = [];
+  birdTimer = BIRD_SPAWN_MIN + Math.random() * (BIRD_SPAWN_MAX - BIRD_SPAWN_MIN);
   document.getElementById('coinVal').textContent = 0;
   document.getElementById('overlay').classList.remove('show');
 }
@@ -561,6 +603,45 @@ function drawObstacle(o) {
   }
 }
 
+function drawBird(b) {
+  const dd = b.d - distance;
+  if (dd < -3 || dd > MAX_D) return;
+  const s = sc(dd), x = laneX(b.lane, dd), y = gy(dd);
+  const landTime = b.spawnTime + BIRD_WARNING_DURATION;
+
+  if (time < landTime) {
+    // aviso: sombra vermelha pulsando no chão, um segundo antes de cair
+    const pulse = 0.5 + 0.5 * Math.sin(time * 14);
+    ctx.save();
+    ctx.globalAlpha = 0.35 + 0.35 * pulse;
+    ctx.fillStyle = '#ff2d2d';
+    ctx.beginPath(); ctx.ellipse(x, y, 46*s, 14*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = 0.7 + 0.3 * pulse;
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.max(8, 20*s)}px 'Press Start 2P', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText('!', x, y - 60*s);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  } else {
+    // pássaro já caiu na pista
+    ctx.save();
+    ctx.translate(x, y - 10*s);
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    ctx.beginPath(); ctx.ellipse(0, 14*s, 30*s, 8*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#3a3a3a';
+    ctx.beginPath(); ctx.ellipse(0, 0, 20*s, 14*s, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#222';
+    ctx.beginPath(); ctx.ellipse(-24*s, -4*s, 16*s, 7*s, -0.4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(24*s, -4*s, 16*s, 7*s, 0.4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffb703';
+    ctx.beginPath(); ctx.moveTo(0, -2*s); ctx.lineTo(10*s, -6*s); ctx.lineTo(0, -10*s); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawFinish() {
   const d = TRACK_LENGTH - distance;
   if (d > MAX_D || d < -3) return;
@@ -669,6 +750,7 @@ function draw() {
   drawFinish();
   for (let i = coins.length - 1; i >= 0; i--) drawCoin(coins[i]);
   for (let i = obstacles.length - 1; i >= 0; i--) drawObstacle(obstacles[i]);
+  for (let i = birds.length - 1; i >= 0; i--) drawBird(birds[i]);
   drawPlayer();
 }
 
