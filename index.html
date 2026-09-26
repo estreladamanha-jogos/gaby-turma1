@@ -144,10 +144,19 @@ let laserLado = -1;              // alterna o lado do laser no espaço
 // ---- poderes ----
 const DASH_DUR = .22, DASH_CD = 3, DASH_VEL = 560;
 const RAIO_CD = 4;
+const ESCUDO_DUR = 5, ESCUDO_CD = 8;
 let dashT = 0, dashCD = 0;       // dash: duração ativa / recarga
-let raioCD = 0;                  // raio: recarga
+let raioCD = 0;                  // raio (fogo): recarga
 let raioFxT = 0;                 // efeito visual do raio (segundos restantes)
 let avisoT = 0;                  // aviso "não funciona aqui"
+let escudoAtivo = false, escudoT = 0, escudoCD = 0; // escudo: ativo / tempo restante / recarga
+
+const PODERES = [
+  { id: 'dash', nome: 'DASH', cor: '#8fe0ff' },
+  { id: 'fogo', nome: 'FOGO', cor: '#ffb347' },
+  { id: 'escudo', nome: 'ESCUDO', cor: '#ff4d6d' },
+];
+let poderIdx = 0;
 
 function mundoAtual() { return MUNDOS[clamp(mundoIdx, 0, MUNDOS.length - 1)]; }
 
@@ -163,9 +172,21 @@ function resetar() {
   jog.x = W / 2; jog.vx = 0; obst = []; gems = []; fx = []; amb = []; spawnT = 1; gemT = 1; ambT = .4;
   mundoIdx = 0; anel = null; bannerT = 0; flashT = 0; laserLado = -1;
   dashT = 0; dashCD = 0; raioCD = 0; raioFxT = 0; avisoT = 0;
+  escudoAtivo = false; escudoT = 0; escudoCD = 0; poderIdx = 0;
 }
 
 /* ---------- poderes ---------- */
+function ativarPoderAtual() {
+  const id = PODERES[poderIdx].id;
+  if (id === 'dash') ativarDash();
+  else if (id === 'fogo') ativarRaio();
+  else if (id === 'escudo') ativarEscudo();
+}
+
+function trocarPoder() {
+  poderIdx = (poderIdx + 1) % PODERES.length;
+}
+
 function ativarDash() {
   if (dashCD > 0) return;
   dashT = DASH_DUR; dashCD = DASH_CD;
@@ -183,6 +204,12 @@ function ativarRaio() {
   } else {
     avisoT = 1.4;
   }
+}
+
+function ativarEscudo() {
+  if (escudoCD > 0 || escudoAtivo) return;
+  escudoAtivo = true; escudoT = ESCUDO_DUR; escudoCD = ESCUDO_CD;
+  burst(jog.x, PY, '#ff4d6d', 14, 140);
 }
 
 /* ---------- obstáculos: um tipo diferente para cada mundo ---------- */
@@ -307,12 +334,12 @@ function desenharAmbiente() {
 /* ---------- entrada ---------- */
 addEventListener('keydown', e => {
   const k = e.code;
-  if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'KeyF'].includes(k)) e.preventDefault();
+  if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab'].includes(k)) e.preventDefault();
   if (estado !== 'jogando') { if (k === 'Space' || k === 'Enter' || k === 'KeyR') resetar(); return; }
   if (k === 'ArrowLeft' || k === 'KeyA') keys.left = true;
   if (k === 'ArrowRight' || k === 'KeyD') keys.right = true;
-  if (k === 'Space' && !e.repeat) ativarDash();
-  if (k === 'KeyF' && !e.repeat) ativarRaio();
+  if (k === 'Space' && !e.repeat) ativarPoderAtual();
+  if (k === 'KeyG' && !e.repeat) trocarPoder();
 });
 addEventListener('keyup', e => {
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
@@ -334,6 +361,8 @@ function update(dt) {
   if (raioCD > 0) raioCD -= dt;
   if (raioFxT > 0) raioFxT -= dt;
   if (avisoT > 0) avisoT -= dt;
+  if (escudoCD > 0) escudoCD -= dt;
+  if (escudoAtivo) { escudoT -= dt; if (escudoT <= 0) escudoAtivo = false; }
 
   // ---- movimento do Fagulha ----
   const ax = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
@@ -406,6 +435,11 @@ function update(dt) {
     }
     if (bateu) {
       if (invenc > 0 || dashT > 0) continue;
+      if (escudoAtivo) {
+        escudoAtivo = false; o.morto = true;
+        burst(jog.x, PY, '#ff4d6d', 20, 200);
+        continue;
+      }
       levarDano(o);
       break;
     }
@@ -456,7 +490,7 @@ function desenhar() {
   }
   for (const o of obst) desenharObstaculo(o);
 
-  // ---- raio (poder da tecla F): atira pra baixo, na direção dos obstáculos ----
+  // ---- raio do poder fogo: atira pra baixo, na direção dos obstáculos ----
   if (raioFxT > 0) {
     c.save(); c.globalAlpha = clamp(raioFxT / .35, 0, 1);
     c.strokeStyle = '#fff59d'; c.lineWidth = 5;
@@ -470,8 +504,16 @@ function desenhar() {
   const piscando = invenc > 0 && Math.floor(t * 14) % 2 === 0;
   if (estado !== 'gameover') {
     if (dashT > 0) { c.save(); c.globalAlpha = .35; c.fillStyle = '#fff'; c.beginPath(); c.arc(jog.x, PY + 12, 34, 0, 7); c.fill(); c.restore(); }
+    if (escudoAtivo) {
+      c.save();
+      c.globalAlpha = .3 + Math.sin(t * 8) * .08;
+      c.fillStyle = '#ff4d6d'; c.beginPath(); c.arc(jog.x, PY + 12, 40, 0, 7); c.fill();
+      c.globalAlpha = .8; c.strokeStyle = '#ff4d6d'; c.lineWidth = 3; c.stroke();
+      c.restore();
+    }
     drawFagulha(c, jog.x, PY + 12, .42, t, {
       vx: clamp(jog.vx / 300, -1, 1), hit: invenc > 1.2 && dashT <= 0,
+      glow: PODERES[poderIdx].cor,
       alpha: piscando ? .3 : 1 });
   }
   for (const p of fx) { c.globalAlpha = clamp(p.life / p.max, 0, 1); c.fillStyle = p.cor; c.beginPath(); c.arc(p.x, p.y, p.r, 0, 7); c.fill(); }
@@ -503,17 +545,23 @@ function hud() {
 
 function barrasPoderes() {
   if (estado !== 'jogando') return;
-  const desenhaBarra = (x, label, cd, cdMax, cor) => {
-    const w = 92, hgt = 14, y = H - 26;
-    c.fillStyle = 'rgba(0,0,0,.5)'; c.fillRect(x, y, w, hgt);
-    const pr = 1 - clamp(cd / cdMax, 0, 1);
-    c.fillStyle = pr >= 1 ? cor : '#555';
+  const w = 100, hgt = 32, gap = 10, totalW = w * 3 + gap * 2, xIni = W / 2 - totalW / 2, y = H - 44;
+  PODERES.forEach((p, i) => {
+    const x = xIni + i * (w + gap);
+    const selecionado = i === poderIdx;
+    let pr, corBarra = p.cor;
+    if (p.id === 'dash') pr = 1 - clamp(dashCD / DASH_CD, 0, 1);
+    else if (p.id === 'fogo') pr = 1 - clamp(raioCD / RAIO_CD, 0, 1);
+    else { pr = escudoAtivo ? clamp(escudoT / ESCUDO_DUR, 0, 1) : 1 - clamp(escudoCD / ESCUDO_CD, 0, 1); }
+    c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(x, y, w, hgt);
+    c.fillStyle = (pr >= 1 || (p.id === 'escudo' && escudoAtivo)) ? corBarra : '#555';
     c.fillRect(x, y, w * pr, hgt);
-    c.strokeStyle = 'rgba(255,255,255,.4)'; c.lineWidth = 1.5; c.strokeRect(x, y, w, hgt);
-    texto(label, x + w / 2, y - 10, 7, '#fff');
-  };
-  desenhaBarra(20, 'DASH (ESPAÇO)', dashCD, DASH_CD, '#8fe0ff');
-  desenhaBarra(W - 112, 'RAIO (F)', raioCD, RAIO_CD, '#fff59d');
+    c.lineWidth = selecionado ? 3 : 1.5;
+    c.strokeStyle = selecionado ? '#fff' : 'rgba(255,255,255,.4)';
+    c.strokeRect(x, y, w, hgt);
+    texto(p.nome, x + w / 2, y + hgt / 2, 8, selecionado ? '#fff' : '#ccc');
+  });
+  texto('ESPAÇO: USAR   G: TROCAR', W / 2, y - 12, 7, '#aaa');
 }
 
 function avisoRaio() {
