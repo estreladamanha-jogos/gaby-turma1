@@ -114,17 +114,27 @@ if (!c.roundRect) c.roundRect = function (x, y, w, h) { this.rect(x, y, w, h); }
 const W = 420, H = 640;
 const PY = 190;                 // altura fixa do Fagulha na tela (o cenário é que sobe)
 const BASE_V = 230;             // velocidade da queda (pixels por segundo)
-const META = 1000;              // meta final em metros
+const META = 1250;              // meta final em metros (5 mundos x 250m)
 const METROS_POR_MUNDO = 250;   // cada mundo dura 250 metros
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rnd = (a, b) => a + Math.random() * (b - a);
 
-/* ---------- os 4 mundos ---------- */
+/* ---------- os 5 mundos ---------- */
 const MUNDOS = [
-  { nome: 'Floresta Encantada', cor1: '#0f2f18', cor2: '#123c1d', accent: '#7CFF9E', trilha: '#1d4a26', particula: 'folha',   obst: 'galho', velMul: 1,    spawn: 1.35 },
-  { nome: 'Geleira Frienta',    cor1: '#0a1f33', cor2: '#123049', accent: '#8fe0ff', trilha: '#1c3e57', particula: 'gelo',    obst: 'cubo',  velMul: 1.15, spawn: 1.0  },
-  { nome: 'Vulcão Calorento',   cor1: '#3a0d0d', cor2: '#4a1010', accent: '#ff7a45', trilha: '#5c1a1a', particula: 'brasa',   obst: 'fogo',  velMul: 1.3,  spawn: .9   },
-  { nome: 'Espaço Gelado',      cor1: '#160a2e', cor2: '#1f0f3d', accent: '#c299ff', trilha: '#2a1850', particula: 'estrela', obst: 'laser', velMul: 1.65, spawn: .85  },
+  { nome: 'Floresta Encantada', cor1: '#0f2f18', cor2: '#123c1d', accent: '#7CFF9E', trilha: '#1d4a26', particula: 'folha',   obst: 'galho',  velMul: 1,    spawn: 1.35 },
+  { nome: 'Geleira Frienta',    cor1: '#0a1f33', cor2: '#123049', accent: '#8fe0ff', trilha: '#1c3e57', particula: 'gelo',    obst: 'cubo',   velMul: 1.15, spawn: 1.0  },
+  { nome: 'Vulcão Calorento',   cor1: '#3a0d0d', cor2: '#4a1010', accent: '#ff7a45', trilha: '#5c1a1a', particula: 'brasa',   obst: 'fogo',   velMul: 1.3,  spawn: .9   },
+  { nome: 'Espaço Gelado',      cor1: '#160a2e', cor2: '#1f0f3d', accent: '#c299ff', trilha: '#2a1850', particula: 'estrela', obst: 'laser',  velMul: 1.65, spawn: .85  },
+  { nome: 'Mundo Tetris',       cor1: '#181829', cor2: '#20203a', accent: '#ffd60a', trilha: '#2a2a45', particula: 'bloco',   obst: 'tetris', velMul: 1.8,  spawn: .8   },
+];
+const TETRO_FORMAS = [
+  { cor: '#00e5ff', cel: [[0,1],[1,1],[2,1],[3,1]] },
+  { cor: '#ffd60a', cel: [[1,0],[2,0],[1,1],[2,1]] },
+  { cor: '#b967ff', cel: [[1,0],[0,1],[1,1],[2,1]] },
+  { cor: '#ff9f1c', cel: [[2,0],[0,1],[1,1],[2,1]] },
+  { cor: '#4361ee', cel: [[0,0],[0,1],[1,1],[2,1]] },
+  { cor: '#2ec4b6', cel: [[1,0],[2,0],[0,1],[1,1]] },
+  { cor: '#e63946', cel: [[0,0],[1,0],[1,1],[2,1]] },
 ];
 
 let estado = 'inicio';          // inicio | jogando | gameover | vitoria
@@ -145,16 +155,19 @@ let laserLado = -1;              // alterna o lado do laser no espaço
 const DASH_DUR = .22, DASH_CD = 3, DASH_VEL = 560;
 const RAIO_CD = 4;
 const ESCUDO_DUR = 5, ESCUDO_CD = 8;
+const EXPLOSAO_CD = 10, EXPLOSAO_RAIO = 150;
 let dashT = 0, dashCD = 0;       // dash: duração ativa / recarga
 let raioCD = 0;                  // raio (fogo): recarga
 let raioFxT = 0;                 // efeito visual do raio (segundos restantes)
 let avisoT = 0;                  // aviso "não funciona aqui"
 let escudoAtivo = false, escudoT = 0, escudoCD = 0; // escudo: ativo / tempo restante / recarga
+let explosaoCD = 0, explosaoFxT = 0; // explosão: recarga / efeito visual
 
 const PODERES = [
   { id: 'dash', nome: 'DASH', cor: '#8fe0ff' },
   { id: 'fogo', nome: 'FOGO', cor: '#ffb347' },
   { id: 'escudo', nome: 'ESCUDO', cor: '#ff4d6d' },
+  { id: 'explosao', nome: 'BOOM', cor: '#ffe066' },
 ];
 let poderIdx = 0;
 
@@ -173,6 +186,7 @@ function resetar() {
   mundoIdx = 0; anel = null; bannerT = 0; flashT = 0; laserLado = -1;
   dashT = 0; dashCD = 0; raioCD = 0; raioFxT = 0; avisoT = 0;
   escudoAtivo = false; escudoT = 0; escudoCD = 0; poderIdx = 0;
+  explosaoCD = 0; explosaoFxT = 0;
 }
 
 /* ---------- poderes ---------- */
@@ -181,6 +195,7 @@ function ativarPoderAtual() {
   if (id === 'dash') ativarDash();
   else if (id === 'fogo') ativarRaio();
   else if (id === 'escudo') ativarEscudo();
+  else if (id === 'explosao') ativarExplosao();
 }
 
 function trocarPoder() {
@@ -212,6 +227,27 @@ function ativarEscudo() {
   burst(jog.x, PY, '#ff4d6d', 14, 140);
 }
 
+function ativarExplosao() {
+  if (explosaoCD > 0) return;
+  explosaoCD = EXPLOSAO_CD; explosaoFxT = .4;
+  for (const o of obst) {
+    if (o.morto) continue;
+    let dentro, px, py = o.y;
+    if (o.tp === 'galho' || o.tp === 'laser') {
+      dentro = Math.abs(o.y - PY) <= EXPLOSAO_RAIO;
+      px = jog.x;
+    } else {
+      px = o.tp === 'fogo' ? o.px : o.x;
+      dentro = Math.hypot(px - jog.x, o.y - PY) <= EXPLOSAO_RAIO;
+    }
+    if (dentro) {
+      o.morto = true;
+      gems.push({ x: px, y: py });
+      burst(px, py, '#ffe066', 10, 130);
+    }
+  }
+}
+
 /* ---------- obstáculos: um tipo diferente para cada mundo ---------- */
 function criarObstaculo() {
   const tipo = mundoAtual().obst;
@@ -225,6 +261,9 @@ function criarObstaculo() {
   } else if (tipo === 'laser') {
     laserLado = laserLado === 'esq' ? 'dir' : 'esq';
     obst.push({ tp: 'laser', y: H + 40, lado: laserLado, gapW: rnd(120, 150), esp: 16 });
+  } else if (tipo === 'tetris') {
+    const forma = TETRO_FORMAS[Math.floor(rnd(0, TETRO_FORMAS.length))];
+    obst.push({ tp: 'tetris', x: rnd(60, W - 60), y: H + 40, forma, s: 16, rot: 0, rotVel: rnd(1.6, 3) * (Math.random() < .5 ? -1 : 1), colR: 34 });
   }
 }
 
@@ -275,6 +314,17 @@ function desenharObstaculo(o) {
       c.fillStyle = '#fff'; c.fillRect(x0, -h / 6, x1 - x0, h / 3);
     }
     c.restore();
+  } else if (o.tp === 'tetris') {
+    c.save(); c.translate(o.x, o.y); c.rotate(o.rot);
+    const s = o.s;
+    c.fillStyle = o.forma.cor; c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 2;
+    for (const [cx, cy] of o.forma.cel) {
+      const rx = (cx - 1.5) * s, ry = (cy - .5) * s;
+      c.fillRect(rx, ry, s - 2, s - 2); c.strokeRect(rx, ry, s - 2, s - 2);
+      c.fillStyle = 'rgba(255,255,255,.25)'; c.fillRect(rx, ry, s - 2, (s - 2) / 3);
+      c.fillStyle = o.forma.cor;
+    }
+    c.restore();
   }
 }
 
@@ -294,6 +344,9 @@ function criarAmbiente() {
     amb.push({ tp: p, x: rnd(0, W), y: H + 20, vx: rnd(-15, 15), vy: rnd(-70, -110), rot: 0, vr: 0, s: rnd(2, 5) });
   } else if (p === 'estrela') {
     amb.push({ tp: p, x: rnd(0, W), y: rnd(0, H), vx: 0, vy: rnd(20, 55), rot: 0, vr: 0, s: rnd(1, 2.6), pisca: rnd(0, 6.28) });
+  } else if (p === 'bloco') {
+    const cor = TETRO_FORMAS[Math.floor(rnd(0, TETRO_FORMAS.length))].cor;
+    amb.push({ tp: p, x: rnd(0, W), y: H + 20, vx: rnd(-8, 8), vy: rnd(-50, -85), rot: rnd(0, 6.28), vr: rnd(-2, 2), s: rnd(5, 9), cor });
   }
 }
 
@@ -326,6 +379,9 @@ function desenharAmbiente() {
       c.globalAlpha = .5 + Math.sin(p.pisca) * .5;
       c.fillStyle = '#fff'; c.beginPath(); c.arc(0, 0, p.s, 0, 7); c.fill();
       c.globalAlpha = 1;
+    } else if (p.tp === 'bloco') {
+      c.fillStyle = p.cor; c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 1;
+      c.fillRect(-p.s / 2, -p.s / 2, p.s, p.s); c.strokeRect(-p.s / 2, -p.s / 2, p.s, p.s);
     }
     c.restore();
   }
@@ -363,6 +419,8 @@ function update(dt) {
   if (avisoT > 0) avisoT -= dt;
   if (escudoCD > 0) escudoCD -= dt;
   if (escudoAtivo) { escudoT -= dt; if (escudoT <= 0) escudoAtivo = false; }
+  if (explosaoCD > 0) explosaoCD -= dt;
+  if (explosaoFxT > 0) explosaoFxT -= dt;
 
   // ---- movimento do Fagulha ----
   const ax = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
@@ -402,6 +460,7 @@ function update(dt) {
   for (const o of obst) {
     o.y -= vel * dt;
     if (o.tp === 'fogo') { o.px = o.baseX + Math.sin(t * o.oscVel + o.fase) * o.amp; }
+    if (o.tp === 'tetris') { o.rot += o.rotVel * dt; }
   }
   obst = obst.filter(o => o.y > -80 && !o.morto);
 
@@ -432,6 +491,9 @@ function update(dt) {
     } else if (o.tp === 'fogo') {
       const dx = (jog.x) - o.px, dy = (PY + 3) - o.y;
       bateu = Math.hypot(dx, dy) < o.r + 15;
+    } else if (o.tp === 'tetris') {
+      const dx = jog.x - o.x, dy = (PY + 3) - o.y;
+      bateu = Math.hypot(dx, dy) < o.colR;
     }
     if (bateu) {
       if (invenc > 0 || dashT > 0) continue;
@@ -500,6 +562,16 @@ function desenhar() {
     c.restore();
   }
 
+  // ---- explosão (poder BOOM): anel de onda de choque ----
+  if (explosaoFxT > 0) {
+    c.save();
+    const pr = 1 - clamp(explosaoFxT / .4, 0, 1);
+    c.globalAlpha = clamp(explosaoFxT / .4, 0, 1) * .8;
+    c.strokeStyle = '#ffe066'; c.lineWidth = 6;
+    c.beginPath(); c.arc(jog.x, PY, EXPLOSAO_RAIO * pr, 0, 7); c.stroke();
+    c.restore();
+  }
+
   // ---- o Fagulha ----
   const piscando = invenc > 0 && Math.floor(t * 14) % 2 === 0;
   if (estado !== 'gameover') {
@@ -545,21 +617,22 @@ function hud() {
 
 function barrasPoderes() {
   if (estado !== 'jogando') return;
-  const w = 100, hgt = 32, gap = 10, totalW = w * 3 + gap * 2, xIni = W / 2 - totalW / 2, y = H - 44;
+  const w = 76, hgt = 32, gap = 6, totalW = w * PODERES.length + gap * (PODERES.length - 1), xIni = W / 2 - totalW / 2, y = H - 44;
   PODERES.forEach((p, i) => {
     const x = xIni + i * (w + gap);
     const selecionado = i === poderIdx;
     let pr, corBarra = p.cor;
     if (p.id === 'dash') pr = 1 - clamp(dashCD / DASH_CD, 0, 1);
     else if (p.id === 'fogo') pr = 1 - clamp(raioCD / RAIO_CD, 0, 1);
-    else { pr = escudoAtivo ? clamp(escudoT / ESCUDO_DUR, 0, 1) : 1 - clamp(escudoCD / ESCUDO_CD, 0, 1); }
+    else if (p.id === 'escudo') pr = escudoAtivo ? clamp(escudoT / ESCUDO_DUR, 0, 1) : 1 - clamp(escudoCD / ESCUDO_CD, 0, 1);
+    else pr = 1 - clamp(explosaoCD / EXPLOSAO_CD, 0, 1);
     c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(x, y, w, hgt);
     c.fillStyle = (pr >= 1 || (p.id === 'escudo' && escudoAtivo)) ? corBarra : '#555';
     c.fillRect(x, y, w * pr, hgt);
     c.lineWidth = selecionado ? 3 : 1.5;
     c.strokeStyle = selecionado ? '#fff' : 'rgba(255,255,255,.4)';
     c.strokeRect(x, y, w, hgt);
-    texto(p.nome, x + w / 2, y + hgt / 2, 8, selecionado ? '#fff' : '#ccc');
+    texto(p.nome, x + w / 2, y + hgt / 2, 7, selecionado ? '#fff' : '#ccc');
   });
   texto('ESPAÇO: USAR   G: TROCAR', W / 2, y - 12, 7, '#aaa');
 }
