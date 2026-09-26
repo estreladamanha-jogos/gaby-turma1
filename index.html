@@ -141,6 +141,14 @@ let bannerT = 0;                 // tempo restante mostrando o nome do mundo
 let flashT = 0;                  // flash branco ao trocar de mundo
 let laserLado = -1;              // alterna o lado do laser no espaço
 
+// ---- poderes ----
+const DASH_DUR = .22, DASH_CD = 3, DASH_VEL = 560;
+const RAIO_CD = 4;
+let dashT = 0, dashCD = 0;       // dash: duração ativa / recarga
+let raioCD = 0;                  // raio: recarga
+let raioFxT = 0;                 // efeito visual do raio (segundos restantes)
+let avisoT = 0;                  // aviso "não funciona aqui"
+
 function mundoAtual() { return MUNDOS[clamp(mundoIdx, 0, MUNDOS.length - 1)]; }
 
 function trocarMundo(novoIdx) {
@@ -154,6 +162,27 @@ function resetar() {
   estado = 'jogando'; t = 0; dist = 0; vidas = 3; invenc = 0; cristais = 0; shake = 0;
   jog.x = W / 2; jog.vx = 0; obst = []; gems = []; fx = []; amb = []; spawnT = 1; gemT = 1; ambT = .4;
   mundoIdx = 0; anel = null; bannerT = 0; flashT = 0; laserLado = -1;
+  dashT = 0; dashCD = 0; raioCD = 0; raioFxT = 0; avisoT = 0;
+}
+
+/* ---------- poderes ---------- */
+function ativarDash() {
+  if (dashCD > 0) return;
+  dashT = DASH_DUR; dashCD = DASH_CD;
+  burst(jog.x, PY, '#fff', 14, 160);
+}
+
+function ativarRaio() {
+  if (raioCD > 0) return;
+  raioCD = RAIO_CD; raioFxT = .35;
+  const tipo = mundoAtual().obst;
+  if (tipo === 'galho') {
+    for (const o of obst) if (o.tp === 'galho' && !o.morto) { o.morto = true; burst(W / 2, o.y, '#ffcf7a', 14, 140); }
+  } else if (tipo === 'cubo') {
+    for (const o of obst) if (o.tp === 'cubo' && !o.morto) { o.morto = true; burst(o.x, o.y, '#bfe9ff', 14, 140); }
+  } else {
+    avisoT = 1.4;
+  }
 }
 
 /* ---------- obstáculos: um tipo diferente para cada mundo ---------- */
@@ -278,10 +307,12 @@ function desenharAmbiente() {
 /* ---------- entrada ---------- */
 addEventListener('keydown', e => {
   const k = e.code;
-  if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab'].includes(k)) e.preventDefault();
+  if (['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'KeyF'].includes(k)) e.preventDefault();
   if (estado !== 'jogando') { if (k === 'Space' || k === 'Enter' || k === 'KeyR') resetar(); return; }
   if (k === 'ArrowLeft' || k === 'KeyA') keys.left = true;
   if (k === 'ArrowRight' || k === 'KeyD') keys.right = true;
+  if (k === 'Space' && !e.repeat) ativarDash();
+  if (k === 'KeyF' && !e.repeat) ativarRaio();
 });
 addEventListener('keyup', e => {
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
@@ -299,12 +330,22 @@ function update(dt) {
   if (shake > 0) shake -= dt;
   if (bannerT > 0) bannerT -= dt;
   if (flashT > 0) flashT -= dt;
+  if (dashCD > 0) dashCD -= dt;
+  if (raioCD > 0) raioCD -= dt;
+  if (raioFxT > 0) raioFxT -= dt;
+  if (avisoT > 0) avisoT -= dt;
 
   // ---- movimento do Fagulha ----
   const ax = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
   if (ax) jog.dir = ax;
-  jog.vx += (ax * 300 - jog.vx) * Math.min(1, dt * 10);
-  jog.x = clamp(jog.x + jog.vx * dt, 34, W - 34);
+  if (dashT > 0) {
+    dashT -= dt;
+    jog.x = clamp(jog.x + jog.dir * DASH_VEL * dt, 34, W - 34);
+    jog.vx = 0;
+  } else {
+    jog.vx += (ax * 300 - jog.vx) * Math.min(1, dt * 10);
+    jog.x = clamp(jog.x + jog.vx * dt, 34, W - 34);
+  }
 
   // ---- mundos: o anel nasce a cada 250 metros e desce junto com o cenário ----
   const metros = dist / 10;
@@ -364,7 +405,7 @@ function update(dt) {
       bateu = Math.hypot(dx, dy) < o.r + 15;
     }
     if (bateu) {
-      if (invenc > 0) continue;
+      if (invenc > 0 || dashT > 0) continue;
       levarDano(o);
       break;
     }
@@ -415,11 +456,22 @@ function desenhar() {
   }
   for (const o of obst) desenharObstaculo(o);
 
+  // ---- raio (poder da tecla F) ----
+  if (raioFxT > 0) {
+    c.save(); c.globalAlpha = clamp(raioFxT / .35, 0, 1);
+    c.strokeStyle = '#fff59d'; c.lineWidth = 5;
+    c.beginPath(); c.moveTo(jog.x + rnd(-6, 6), 0);
+    for (let y = 40; y < PY + 10; y += 40) c.lineTo(jog.x + rnd(-16, 16), y);
+    c.stroke();
+    c.restore();
+  }
+
   // ---- o Fagulha ----
   const piscando = invenc > 0 && Math.floor(t * 14) % 2 === 0;
   if (estado !== 'gameover') {
+    if (dashT > 0) { c.save(); c.globalAlpha = .35; c.fillStyle = '#fff'; c.beginPath(); c.arc(jog.x, PY + 12, 34, 0, 7); c.fill(); c.restore(); }
     drawFagulha(c, jog.x, PY + 12, .42, t, {
-      vx: clamp(jog.vx / 300, -1, 1), hit: invenc > 1.2,
+      vx: clamp(jog.vx / 300, -1, 1), hit: invenc > 1.2 && dashT <= 0,
       alpha: piscando ? .3 : 1 });
   }
   for (const p of fx) { c.globalAlpha = clamp(p.life / p.max, 0, 1); c.fillStyle = p.cor; c.beginPath(); c.arc(p.x, p.y, p.r, 0, 7); c.fill(); }
@@ -427,6 +479,8 @@ function desenhar() {
   c.restore();
   if (flashT > 0) { c.fillStyle = `rgba(255,255,255,${clamp(flashT / .5, 0, 1)})`; c.fillRect(0, 0, W, H); }
   hud();
+  barrasPoderes();
+  avisoRaio();
   bannerMundo();
   telas();
 }
@@ -445,6 +499,29 @@ function hud() {
   c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(W - 14, 44, 6, 140);
   c.fillStyle = mundoAtual().accent; c.fillRect(W - 14, 44, 6, 140 * pr);
   texto(Math.floor(dist / 10) + ' m', W - 11, 196, 8, '#fff', 'right');
+}
+
+function barrasPoderes() {
+  if (estado !== 'jogando') return;
+  const desenhaBarra = (x, label, cd, cdMax, cor) => {
+    const w = 92, hgt = 14, y = H - 26;
+    c.fillStyle = 'rgba(0,0,0,.5)'; c.fillRect(x, y, w, hgt);
+    const pr = 1 - clamp(cd / cdMax, 0, 1);
+    c.fillStyle = pr >= 1 ? cor : '#555';
+    c.fillRect(x, y, w * pr, hgt);
+    c.strokeStyle = 'rgba(255,255,255,.4)'; c.lineWidth = 1.5; c.strokeRect(x, y, w, hgt);
+    texto(label, x + w / 2, y - 10, 7, '#fff');
+  };
+  desenhaBarra(20, 'DASH (ESPAÇO)', dashCD, DASH_CD, '#8fe0ff');
+  desenhaBarra(W - 112, 'RAIO (F)', raioCD, RAIO_CD, '#fff59d');
+}
+
+function avisoRaio() {
+  if (avisoT <= 0) return;
+  c.save(); c.globalAlpha = clamp(avisoT / .3, 0, 1);
+  c.fillStyle = 'rgba(0,0,0,.5)'; c.fillRect(0, PY - 30, W, 40);
+  texto('O RAIO NÃO FUNCIONA AQUI!', W / 2, PY - 10, 9, '#ff8888');
+  c.restore();
 }
 
 function bannerMundo() {
