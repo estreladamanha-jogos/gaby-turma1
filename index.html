@@ -136,14 +136,13 @@ let spawnT = 1, gemT = 1, ambT = .4;
 
 // ---- controle dos mundos ----
 let mundoIdx = 0;               // mundo atual (0 a 3)
-let anelY = null;                // posição do anel de transição (null = sem anel)
+let anel = null;                 // anel de transição vindo pela frente: { y, idx } (null = nenhum)
 let bannerT = 0;                 // tempo restante mostrando o nome do mundo
 
 function mundoAtual() { return MUNDOS[clamp(mundoIdx, 0, MUNDOS.length - 1)]; }
 
 function trocarMundo(novoIdx) {
   mundoIdx = novoIdx;
-  anelY = H + 30;                 // o anel nasce embaixo e sobe
   bannerT = 2.4;                  // tempo do nome na tela
   burst(jog.x, PY, mundoAtual().accent, 26, 200);
 }
@@ -151,7 +150,7 @@ function trocarMundo(novoIdx) {
 function resetar() {
   estado = 'jogando'; t = 0; dist = 0; vidas = 3; invenc = 0; cristais = 0; shake = 0;
   jog.x = W / 2; jog.vx = 0; obst = []; gems = []; fx = []; amb = []; spawnT = 1; gemT = 1; ambT = .4;
-  mundoIdx = 0; anelY = null; bannerT = 0;
+  mundoIdx = 0; anel = null; bannerT = 0;
 }
 
 /* ---------- obstáculos ---------- */
@@ -246,7 +245,6 @@ function update(dt) {
   if (invenc > 0) invenc -= dt;
   if (shake > 0) shake -= dt;
   if (bannerT > 0) bannerT -= dt;
-  if (anelY !== null) { anelY -= 260 * dt; if (anelY < -40) anelY = null; }
 
   // ---- movimento do Fagulha ----
   const ax = (keys.left ? -1 : 0) + (keys.right ? 1 : 0);
@@ -254,10 +252,19 @@ function update(dt) {
   jog.vx += (ax * 300 - jog.vx) * Math.min(1, dt * 10);
   jog.x = clamp(jog.x + jog.vx * dt, 34, W - 34);
 
-  // ---- mundos: troca a cada 250 metros ----
+  // ---- mundos: o anel nasce a cada 250 metros e desce junto com o cenário ----
   const metros = dist / 10;
   const idxAlvo = clamp(Math.floor(metros / METROS_POR_MUNDO), 0, MUNDOS.length - 1);
-  if (idxAlvo !== mundoIdx) trocarMundo(idxAlvo);
+  if (idxAlvo !== mundoIdx && (!anel || anel.idx !== idxAlvo)) {
+    anel = { y: H + 60, idx: idxAlvo };
+  }
+  if (anel) {
+    anel.y -= vel * dt;                          // o anel se move como o resto do cenário
+    if (anel.y <= PY + 10 && mundoIdx !== anel.idx) {
+      trocarMundo(anel.idx);                      // só troca quando o Fagulha atravessa o anel
+    }
+    if (anel.y < -60) anel = null;
+  }
 
   // ---- partículas ambiente do mundo ----
   atualizarAmbiente(dt);
@@ -317,11 +324,11 @@ function fundo() {
 }
 
 function anelTransicao() {
-  if (anelY === null) return;
-  const m = mundoAtual();
-  c.save(); c.globalAlpha = clamp(1 - Math.abs(anelY - H / 2) / (H / 2), 0, 1) * .9 + .1;
-  c.strokeStyle = m.accent; c.lineWidth = 6; c.beginPath(); c.ellipse(W / 2, anelY, W * .62, 16, 0, 0, 7); c.stroke();
-  c.lineWidth = 2; c.globalAlpha *= .6; c.beginPath(); c.ellipse(W / 2, anelY, W * .62 + 10, 20, 0, 0, 7); c.stroke();
+  if (anel === null) return;
+  const m = MUNDOS[anel.idx];
+  c.save(); c.globalAlpha = clamp(1 - Math.abs(anel.y - H / 2) / (H / 2), 0, 1) * .9 + .1;
+  c.strokeStyle = m.accent; c.lineWidth = 6; c.beginPath(); c.ellipse(W / 2, anel.y, W * .62, 16, 0, 0, 7); c.stroke();
+  c.lineWidth = 2; c.globalAlpha *= .6; c.beginPath(); c.ellipse(W / 2, anel.y, W * .62 + 10, 20, 0, 0, 7); c.stroke();
   c.restore();
 }
 
