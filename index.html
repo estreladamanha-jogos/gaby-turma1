@@ -161,14 +161,14 @@ function criarObstaculo() {
   const tipo = mundoAtual().obst;
   if (tipo === 'galho') {
     const gapSide = Math.random() < .5 ? 'esq' : 'dir';
-    obst.push({ tp: 'galho', y: H + 50, gapSide, gapW: rnd(120, 150) });
+    obst.push({ tp: 'galho', y: H + 50, gapSide, gapW: rnd(120, 150), esp: 22 });
   } else if (tipo === 'cubo') {
     obst.push({ tp: 'cubo', x: rnd(50, W - 50), y: H + 40, s: rnd(28, 42), rot: rnd(0, 6.28) });
   } else if (tipo === 'fogo') {
     obst.push({ tp: 'fogo', baseX: rnd(80, W - 80), y: H + 40, r: rnd(16, 22), fase: rnd(0, 6.28), oscVel: rnd(2, 3.2), amp: rnd(60, 100), px: 0 });
   } else if (tipo === 'laser') {
     laserLado = laserLado === 'esq' ? 'dir' : 'esq';
-    obst.push({ tp: 'laser', y: H + 40, lado: laserLado, gapW: rnd(120, 150) });
+    obst.push({ tp: 'laser', y: H + 40, lado: laserLado, gapW: rnd(120, 150), esp: 16 });
   }
 }
 
@@ -176,18 +176,19 @@ function desenharObstaculo(o) {
   if (o.tp === 'galho') {
     const gapStart = o.gapSide === 'esq' ? 0 : W - o.gapW;
     const gapEnd = gapStart + o.gapW;
+    const h = o.esp;
     c.save(); c.translate(0, o.y);
     for (const [x0, x1] of [[0, gapStart], [gapEnd, W]]) {
       if (x1 - x0 < 2) continue;
       c.fillStyle = '#6b4423'; c.strokeStyle = '#3a260f'; c.lineWidth = 2.4;
-      c.fillRect(x0, -16, x1 - x0, 32); c.strokeRect(x0, -16, x1 - x0, 32);
-      c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(x0, -16, x1 - x0, 8);
+      c.fillRect(x0, -h / 2, x1 - x0, h); c.strokeRect(x0, -h / 2, x1 - x0, h);
+      c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(x0, -h / 2, x1 - x0, h / 2.6);
       // arara pousada na ponta do galho perto da abertura
       const px = o.gapSide === 'esq' ? x1 - 20 : x0 + 20;
-      c.save(); c.translate(px, -16);
-      c.fillStyle = '#ff5533'; c.beginPath(); c.ellipse(0, -8, 10, 8, 0, 0, 7); c.fill();
-      c.fillStyle = '#2a6bff'; c.beginPath(); c.ellipse(0, -16, 6, 6, 0, 0, 7); c.fill();
-      c.fillStyle = '#ffd23d'; c.beginPath(); c.moveTo(8, -16); c.lineTo(16, -14); c.lineTo(8, -12); c.closePath(); c.fill();
+      c.save(); c.translate(px, -h / 2);
+      c.fillStyle = '#ff5533'; c.beginPath(); c.ellipse(0, -7, 8, 6.5, 0, 0, 7); c.fill();
+      c.fillStyle = '#2a6bff'; c.beginPath(); c.ellipse(0, -13, 5, 5, 0, 0, 7); c.fill();
+      c.fillStyle = '#ffd23d'; c.beginPath(); c.moveTo(6, -13); c.lineTo(13, -11); c.lineTo(6, -9); c.closePath(); c.fill();
       c.restore();
     }
     c.restore();
@@ -208,13 +209,14 @@ function desenharObstaculo(o) {
   } else if (o.tp === 'laser') {
     const gapStart = o.lado === 'esq' ? 0 : W - o.gapW;
     const gapEnd = gapStart + o.gapW;
+    const h = o.esp;
     c.save(); c.translate(0, o.y);
     for (const [x0, x1] of [[0, gapStart], [gapEnd, W]]) {
       if (x1 - x0 < 2) continue;
-      const g = c.createLinearGradient(0, -12, 0, 12);
+      const g = c.createLinearGradient(0, -h / 2, 0, h / 2);
       g.addColorStop(0, 'rgba(200,140,255,0)'); g.addColorStop(.5, '#e2a8ff'); g.addColorStop(1, 'rgba(200,140,255,0)');
-      c.fillStyle = g; c.fillRect(x0, -12, x1 - x0, 24);
-      c.fillStyle = '#fff'; c.fillRect(x0, -2, x1 - x0, 4);
+      c.fillStyle = g; c.fillRect(x0, -h / 2, x1 - x0, h);
+      c.fillStyle = '#fff'; c.fillRect(x0, -h / 6, x1 - x0, h / 3);
     }
     c.restore();
   }
@@ -350,7 +352,8 @@ function update(dt) {
     if (o.tp === 'galho' || o.tp === 'laser') {
       const gapStart = o.gapSide ? (o.gapSide === 'esq' ? 0 : W - o.gapW) : (o.lado === 'esq' ? 0 : W - o.gapW);
       const gapEnd = gapStart + o.gapW;
-      const dentroDaFaixa = hb.y < o.y + 16 && hb.y + hb.h > o.y - 16;
+      const metade = o.esp / 2;
+      const dentroDaFaixa = hb.y < o.y + metade && hb.y + hb.h > o.y - metade;
       const naAbertura = hb.x >= gapStart && hb.x + hb.w <= gapEnd;
       bateu = dentroDaFaixa && !naAbertura;
     } else if (o.tp === 'cubo') {
