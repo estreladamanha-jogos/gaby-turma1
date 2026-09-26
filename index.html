@@ -456,12 +456,12 @@ function desenhar() {
   }
   for (const o of obst) desenharObstaculo(o);
 
-  // ---- raio (poder da tecla F) ----
+  // ---- raio (poder da tecla F): atira pra baixo, na direção dos obstáculos ----
   if (raioFxT > 0) {
     c.save(); c.globalAlpha = clamp(raioFxT / .35, 0, 1);
     c.strokeStyle = '#fff59d'; c.lineWidth = 5;
-    c.beginPath(); c.moveTo(jog.x + rnd(-6, 6), 0);
-    for (let y = 40; y < PY + 10; y += 40) c.lineTo(jog.x + rnd(-16, 16), y);
+    c.beginPath(); c.moveTo(jog.x + rnd(-6, 6), PY + 20);
+    for (let y = PY + 60; y < H; y += 40) c.lineTo(jog.x + rnd(-16, 16), y);
     c.stroke();
     c.restore();
   }
